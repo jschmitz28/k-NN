@@ -42,6 +42,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -80,14 +81,14 @@ public class KNNWeight extends Weight {
              * In case of compound file, extension would be .hnswc otherwise .hnsw
              */
             String hnswFileExtension = reader.getSegmentInfo().info.getUseCompoundFile()
-                                               ? KNNCodecUtil.HNSW_COMPOUND_EXTENSION : KNNCodecUtil.HNSW_EXTENSION;
+                    ? KNNCodecUtil.HNSW_COMPOUND_EXTENSION : KNNCodecUtil.HNSW_EXTENSION;
             String hnswSuffix = knnQuery.getField() + hnswFileExtension;
             List<String> hnswFiles = reader.getSegmentInfo().files().stream()
-                                           .filter(fileName -> fileName.endsWith(hnswSuffix))
-                                          .collect(Collectors.toList());
+                    .filter(fileName -> fileName.endsWith(hnswSuffix))
+                    .collect(Collectors.toList());
 
             if(hnswFiles.isEmpty()) {
-                logger.debug("[KNN] No hsnw index found for field {} for segment {}",
+                logger.debug("[KNN] No hnsw index found for field {} for segment {}",
                         knnQuery.getField(), reader.getSegmentName());
                 return null;
             }
@@ -104,28 +105,16 @@ public class KNNWeight extends Weight {
             KNNQueryResult[] results = AccessController.doPrivileged(
                     new PrivilegedAction<KNNQueryResult[]>() {
                         public KNNQueryResult[] run() {
-                            KNNIndex index = knnIndexCache.getIndex(indexPath.toString());
-                            if(index.isDeleted.get()) {
-                                // Race condition occured. Looks like entry got evicted from cache and
-                                // possibly gc. Try to read again
-                                logger.info("[KNN] Race condition occured. Looks like entry got evicted " +
-                                                    "from cache and possible gc. Trying to read again");
-                                index = knnIndexCache.getIndex(indexPath.toString());
-                                if(index.isDeleted.get()) {
-                                    logger.info("Index deleted. Possibly getting evicted as segment exceeds the cache max weight. Path: " + indexPath.toString());
-                                    return  null;
-                                }
-                            }
-                            return index.queryIndex(knnQuery.getQueryVector(), knnQuery.getK(), getQueryParams(queryFieldInfo));
+                            final KNNIndex index = knnIndexCache.getIndex();
+                            // TODO races with knnIndexCache.gc();
+                            return index.queryIndex(
+                                    knnQuery.getQueryVector(),
+                                    knnQuery.getK(),
+                                    getQueryParams(queryFieldInfo))
+                            );
                         }
                     }
             );
-
-            if (results == null) {
-                logger.debug("No results for field {} for segment {}",
-                        knnQuery.getField(), reader.getSegmentName());
-                return  null;
-            }
 
             /**
              * Scores represent the distance of the documents with respect to given query vector.

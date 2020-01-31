@@ -32,8 +32,6 @@ public class KNNIndex {
         System.loadLibrary(NmsLibVersion.V1736.indexLibraryVersion());
     }
 
-    public AtomicBoolean isDeleted = new AtomicBoolean(false);
-
     private long index;
     private long indexSize;
 
